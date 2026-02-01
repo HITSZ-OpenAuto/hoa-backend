@@ -43,11 +43,15 @@ jobs:
       - name: Strip binary (linux and macos)
         if: matrix.build == 'linux' || matrix.build == 'macos'
         run: |
-          strip "target/${{ matrix.target }}/release/fuma_rs"
+          pwd
+          ls -al
+          strip "/home/runner/work/fuma-rs/fuma-rs/target/${{ matrix.target }}/release/fuma_rs"
 
       - name: Build archive
         shell: bash
         run: |
+          pwd
+          ls -al
           mkdir archive
           cd archive
           cp "../target/${{ matrix.target }}/release/fuma_rs" ./fuma_rs
