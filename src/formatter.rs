@@ -183,13 +183,28 @@ fn escape_curly_braces_in_math(content: &str) -> String {
 fn convert_hugo_details_to_accordion(content: &str) -> String {
     let mut result = content.to_string();
 
+    // First, handle single-line shortcodes: {{% details title="..." %}} content {{% /details %}}
+    let re_single_line =
+        Regex::new(r#"\{\{% details title="([^"]*)"[^%]*%\}\}\s*(.+?)\s*\{\{% /details %\}\}"#)
+            .unwrap();
+    result = re_single_line
+        .replace_all(&result, "<Accordion title=\"$1\">\n$2\n</Accordion>")
+        .to_string();
+
     // Convert opening tags
     let re_open = Regex::new(r#"\{\{% details title="([^"]*)"[^%]*%\}\}"#).unwrap();
     result = re_open
         .replace_all(&result, r#"<Accordion title="$1">"#)
         .to_string();
 
-    // Convert closing tags
+    // Convert closing tags - ensure they're on their own line for MDX compatibility
+    // Replace any occurrence where {{% /details %}} appears at end of line content
+    let re_closing = Regex::new(r#"([^\n])\s*\{\{% /details %\}\}"#).unwrap();
+    result = re_closing
+        .replace_all(&result, "$1\n</Accordion>")
+        .to_string();
+
+    // Handle any remaining standalone closing tags
     result = result.replace("{{% /details %}}", "</Accordion>");
 
     // Wrap consecutive Accordion blocks in Accordions
