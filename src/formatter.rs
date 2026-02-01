@@ -31,8 +31,11 @@ fn remove_html_comments(content: &str) -> String {
 
 /// Remove shield.io badges (markdown image syntax)
 fn remove_shield_badges(content: &str) -> String {
-    let re = Regex::new(r"!\[[^\]]*\]\(https://img\.shields\.io/[^)]+\)\s*").unwrap();
-    re.replace_all(content, "").to_string()
+    content
+        .split('\n')
+        .filter(|&line| !line.contains("https://img.shields.io"))
+        .collect::<Vec<&str>>()
+        .join("\n")
 }
 
 /// Convert HTML tags to self-closing format for MDX compatibility
