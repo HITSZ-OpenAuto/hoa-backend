@@ -1,0 +1,3 @@
+[submodule "hoa-major-data"]
+	path = hoa-major-data
+	url = git@github.com:HITSZ-OpenAuto/hoa-major-data.git
