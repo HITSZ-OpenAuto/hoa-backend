@@ -13,7 +13,7 @@ mod models;
 mod tree;
 
 use error::Result;
-use std::path::PathBuf;
+use std::path::Path;
 use std::{env, fs};
 
 /// Main entry point for the Fuma course page generator.
@@ -30,11 +30,8 @@ async fn main() -> Result<()> {
     // Check for --fetch flag
     let args: Vec<String> = env::args().collect();
     let should_fetch = args.contains(&"--fetch".to_string());
-    // Determine repository root (parent of fuma_rs)
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("Failed to get parent directory")
-        .to_path_buf();
+
+    let repo_root = Path::new(".").to_path_buf();
 
     println!("Repository root: {}", repo_root.display());
 
@@ -103,7 +100,7 @@ async fn main() -> Result<()> {
     }
 
     // Load all training plans from TOML files
-    let data_dir = repo_root.join("hoa-majors/src/hoa_majors/data");
+    let data_dir = repo_root.join("hoa-major-data");
     let plans = loader::load_all_plans(&data_dir)?;
     println!("Loaded {} training plans", plans.len());
 
