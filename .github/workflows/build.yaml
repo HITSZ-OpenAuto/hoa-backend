@@ -65,7 +65,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    if: ${{ startsWith(github.ref, 'refs/heads/main') }}
+    # if: ${{ startsWith(github.ref, 'refs/heads/main') }}
     needs: [build]
     permissions:
       # Use to sign the release artifacts
