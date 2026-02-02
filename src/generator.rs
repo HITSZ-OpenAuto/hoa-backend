@@ -166,7 +166,7 @@ pub async fn generate_course_pages(
                 let tree = build_file_tree(&worktree, &course.code);
                 let jsx = tree_to_jsx(&tree, 1);
                 format!(
-                    "\n\n## 资源下载\n\n<Files url=\"https://github.com/HITSZ-OpenAuto/{}\">\n{}\n</Files>",
+                    "\n\n## 资源下载\n\n<Files url=\"https://open.osa.moe/openauto/{}\">\n{}\n</Files>",
                     course.code, jsx
                 )
             } else {
