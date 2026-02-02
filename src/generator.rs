@@ -110,10 +110,6 @@ pub async fn generate_course_pages(
         fs::create_dir_all(&major_dir)?;
 
         // Write major metadata
-        //
-        // Fumadocs uses `meta.json` -> `pages` to control sidebar ordering. For majors that
-        // contain semester subfolders, we want chronological order (大一·秋 → ... → 大四·春)
-        // instead of alphabetical.
         let pages: Vec<String> = std::iter::once("...".to_string())
             .chain(SEMESTER_MAPPING.iter().map(|(_, folder, _)| (*folder).to_string()))
             .collect();
