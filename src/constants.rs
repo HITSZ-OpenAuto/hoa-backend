@@ -14,8 +14,8 @@ pub const SEMESTER_MAPPING: &[(&str, &str, &str)] = &[
 pub fn get_semester_folder(recommended: &str) -> Option<(&'static str, &'static str)> {
     SEMESTER_MAPPING
         .iter()
-        .find(|(key, _, _)| *key == recommended)
-        .map(|(_, folder, title)| (*folder, *title))
+        .find(|&&(key, _, _)| key == recommended)
+        .map(|&(_, folder, title)| (folder, title))
 }
 
 // ============================================================================

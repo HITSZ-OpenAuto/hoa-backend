@@ -55,14 +55,10 @@ fn build_frontmatter(title: &str, course: &Course) -> String {
                     0
                 };
 
-                if percent > 0 {
-                    Some(GradingItem {
-                        name: detail.name.clone(),
-                        percent,
-                    })
-                } else {
-                    None
-                }
+                (percent > 0).then(|| GradingItem {
+                    name: detail.name.clone(),
+                    percent,
+                })
             })
             .collect()
     } else {
@@ -110,10 +106,19 @@ pub async fn generate_course_pages(
         fs::create_dir_all(&major_dir)?;
 
         // Write major metadata
+        let pages: Vec<String> = std::iter::once("...".to_string())
+            .chain(
+                SEMESTER_MAPPING
+                    .iter()
+                    .map(|(_, folder, _)| folder.to_string()),
+            )
+            .collect();
+
         let major_meta = serde_json::json!({
             "title": plan.major_name,
             "root": true,
             "defaultOpen": true,
+            "pages": pages,
         });
         fs::write(
             major_dir.join("meta.json"),
