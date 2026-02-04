@@ -130,28 +130,36 @@ fn escape_curly_braces_in_math(content: &str) -> String {
         // Detect Math Delimiter
         if chars[i] == '$' {
             let is_display = i + 1 < chars.len() && chars[i + 1] == '$';
-            let delimiter = if is_display { "$$" } else { "$" };
-            let del_len = delimiter.len();
+            let del_len = if is_display { 2 } else { 1 };
 
-            // Find closing delimiter starting after the opening one
-            let search_area = &content[i + del_len..];
-            if let Some(relative_end) = search_area.find(delimiter) {
-                let end_pos = i + del_len + relative_end;
+            // Find closing delimiter in char array
+            let mut end_idx = None;
+            for j in (i + del_len)..(chars.len() - del_len + 1) {
+                if chars[j] == '$' && (!is_display || j + 1 < chars.len() && chars[j + 1] == '$') {
+                    end_idx = Some(j);
+                    break;
+                }
+            }
 
+            if let Some(end_pos) = end_idx {
                 // 1. Add opening delimiter
-                result.push_str(delimiter);
+                for _ in 0..del_len {
+                    result.push('$');
+                }
 
                 // 2. Process math content with escapes
-                let math_content = &content[i + del_len..end_pos];
-                for (idx, c) in math_content.chars().enumerate() {
-                    if (c == '{' || c == '}') && !is_escaped(math_content, idx) {
+                for idx in (i + del_len)..end_pos {
+                    let c = chars[idx];
+                    if (c == '{' || c == '}') && !is_escaped_at_char_idx(&chars, idx) {
                         result.push('\\');
                     }
                     result.push(c);
                 }
 
                 // 3. Add closing delimiter
-                result.push_str(delimiter);
+                for _ in 0..del_len {
+                    result.push('$');
+                }
 
                 i = end_pos + del_len;
                 continue;
@@ -164,12 +172,9 @@ fn escape_curly_braces_in_math(content: &str) -> String {
     result
 }
 
-/// Helper to check if a character at a specific index is already escaped by a backslash
-fn is_escaped(text: &str, idx: usize) -> bool {
-    if idx == 0 {
-        return false;
-    }
-    text.as_bytes().get(idx - 1) == Some(&b'\\')
+/// Helper to check if a character at a specific char index is already escaped by a backslash
+fn is_escaped_at_char_idx(chars: &[char], idx: usize) -> bool {
+    idx > 0 && chars[idx - 1] == '\\'
 }
 
 /// Convert Hugo details shortcode to Fumadocs Accordion components
@@ -437,6 +442,44 @@ mod tests {
     }
 
     #[test]
+    fn test_escape_math_braces_utf8_chinese() {
+        let input = "中文文本 $x = {1, 2}$ 更多中文";
+        let output = escape_curly_braces_in_math(input);
+        assert_eq!(output, r"中文文本 $x = \{1, 2\}$ 更多中文");
+    }
+
+    #[test]
+    fn test_escape_math_braces_utf8_emoji() {
+        let input = "Test 😀 $f(x) = {x}$ 🎉 end";
+        let output = escape_curly_braces_in_math(input);
+        assert_eq!(output, r"Test 😀 $f(x) = \{x\}$ 🎉 end");
+    }
+
+    #[test]
+    fn test_escape_math_braces_utf8_mixed() {
+        let input = "日本語 $$集合 = {a, b, c}$$ Русский";
+        let output = escape_curly_braces_in_math(input);
+        assert_eq!(output, r"日本語 $$集合 = \{a, b, c\}$$ Русский");
+    }
+
+    #[test]
+    fn test_escape_math_braces_utf8_already_escaped() {
+        let input = r"한글 $x = \{1\}$ текст";
+        let output = escape_curly_braces_in_math(input);
+        assert_eq!(output, r"한글 $x = \{1\}$ текст");
+    }
+
+    #[test]
+    fn test_escape_math_braces_utf8_complex() {
+        let input = "Ελληνικά $α = {β}$ 中文 $$γ = {δ}$$ العربية";
+        let output = escape_curly_braces_in_math(input);
+        assert!(output.contains(r"$α = \{β\}$"));
+        assert!(output.contains(r"$$γ = \{δ\}$$"));
+        assert!(output.contains("Ελληνικά"));
+        assert!(output.contains("العربية"));
+    }
+
+    #[test]
     fn test_convert_hugo_details_to_accordion() {
         let input = r#"{{% details title="Test" %}}Content here{{% /details %}}"#;
         let output = convert_hugo_details_to_accordion(input);
@@ -503,9 +546,14 @@ Math: $x = {1}$
 
     #[test]
     fn test_is_escaped() {
-        assert!(!is_escaped("test", 0));
-        assert!(!is_escaped("test", 2));
-        assert!(is_escaped(r"\{", 1));
-        assert!(!is_escaped("{test}", 0));
+        let chars1: Vec<char> = "test".chars().collect();
+        assert!(!is_escaped_at_char_idx(&chars1, 0));
+        assert!(!is_escaped_at_char_idx(&chars1, 2));
+
+        let chars2: Vec<char> = r"\{".chars().collect();
+        assert!(is_escaped_at_char_idx(&chars2, 1));
+
+        let chars3: Vec<char> = "{test}".chars().collect();
+        assert!(!is_escaped_at_char_idx(&chars3, 0));
     }
 }
