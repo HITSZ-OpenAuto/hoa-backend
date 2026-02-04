@@ -13,8 +13,9 @@ pub fn format_mdx_file(content: &str) -> String {
     result = fix_self_closing_tags(&result);
     result = fix_malformed_html(&result);
     result = convert_style_to_jsx(&result);
-    // result = escape_curly_braces_in_math(&result);
     result = convert_hugo_details_to_accordion(&result);
+    result = convert_math_blocks(&result);
+    result = convert_inline_math(&result);
 
     // Clean up multiple consecutive blank lines
     let re = Regex::new(r"\n{3,}").unwrap();
@@ -119,7 +120,6 @@ fn convert_style_to_jsx(content: &str) -> String {
     .to_string()
 }
 
-
 /// Convert Hugo details shortcode to Fumadocs Accordion components
 fn convert_hugo_details_to_accordion(content: &str) -> String {
     let mut result = content.to_string();
@@ -150,6 +150,99 @@ fn convert_hugo_details_to_accordion(content: &str) -> String {
 
     // Wrap consecutive Accordion blocks in Accordions
     result = wrap_accordions_in_container(&result);
+
+    result
+}
+
+/// Convert block-level math delimiters $$ $$ to ```math code blocks
+/// Preserves whether there's a newline after the opening $$
+fn convert_math_blocks(content: &str) -> String {
+    // Match $$ ... $$ (both inline and block forms)
+    // This regex captures: opening $$, optional newline, content, optional newline, closing $$
+    let re = Regex::new(r"\$\$(\r?\n)?([\s\S]*?)(\r?\n)?\$\$").unwrap();
+
+    re.replace_all(content, |caps: &regex::Captures| {
+        let has_opening_newline = caps.get(1).is_some();
+        let math_content = &caps[2];
+        let has_closing_newline = caps.get(3).is_some();
+
+        // If original format had newlines, preserve them; otherwise add them
+        if has_opening_newline && has_closing_newline {
+            // Block format: $$\ncontent\n$$ -> ```math\ncontent\n```
+            format!("```math\n{}\n```", math_content)
+        } else {
+            // Inline format: $$content$$ -> ```math\ncontent\n```
+            format!("```math\n{}\n```", math_content)
+        }
+    })
+    .to_string()
+}
+
+/// Convert inline math delimiters $ $ to $$ $$
+/// Only converts single dollar signs, not double dollar signs
+fn convert_inline_math(content: &str) -> String {
+    let mut result = String::new();
+    let mut chars = content.chars().peekable();
+    let mut in_math = false;
+    let mut math_buffer = String::new();
+
+    while let Some(ch) = chars.next() {
+        if ch == '$' {
+            // Check if it's a double $$
+            if chars.peek() == Some(&'$') {
+                // It's $$, not single $, so just pass through
+                result.push(ch);
+                continue;
+            }
+
+            // Check if previous char was also $
+            if result.ends_with('$') {
+                // Previous was $, this is second $, so it's $$, just pass through
+                result.push(ch);
+                continue;
+            }
+
+            // It's a single $
+            if in_math {
+                // Closing $
+                result.push_str("$$");
+                result.push_str(&math_buffer);
+                result.push_str("$$");
+                math_buffer.clear();
+                in_math = false;
+            } else {
+                // Opening $
+                // Check if the next content doesn't immediately have another $ or newline
+                if let Some(&next_ch) = chars.peek() {
+                    if next_ch == '\n' {
+                        // Single $ before newline, just pass through
+                        result.push(ch);
+                        continue;
+                    }
+                }
+                in_math = true;
+            }
+        } else if in_math {
+            if ch == '\n' {
+                // Newline in math mode means it's not inline math, abort
+                result.push('$');
+                result.push_str(&math_buffer);
+                result.push(ch);
+                math_buffer.clear();
+                in_math = false;
+            } else {
+                math_buffer.push(ch);
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    // Handle unclosed math at end
+    if in_math {
+        result.push('$');
+        result.push_str(&math_buffer);
+    }
 
     result
 }
@@ -409,5 +502,87 @@ Math: $x = {1}$
         assert!(output.contains("textAlign"));
         // assert!(output.contains(r"\{"));
         assert!(output.contains("<Accordion"));
+    }
+
+    #[test]
+    fn test_convert_math_blocks_with_newlines() {
+        let input = "Some text\n$$\nx = y + z\n$$\nMore text";
+        let output = convert_math_blocks(input);
+        assert!(output.contains("```math\nx = y + z\n```"));
+        assert!(!output.contains("$$\n"));
+    }
+
+    #[test]
+    fn test_convert_math_blocks_inline_format() {
+        let input = "Some text $$x = y + z$$ more text";
+        let output = convert_math_blocks(input);
+        assert!(output.contains("```math\nx = y + z\n```"));
+        assert!(!output.contains("$$x"));
+    }
+
+    #[test]
+    fn test_convert_math_blocks_multiline() {
+        let input = "Text\n$$\n\\int_0^1 x^2 dx\n= \\frac{1}{3}\n$$\nEnd";
+        let output = convert_math_blocks(input);
+        assert!(output.contains("```math"));
+        assert!(output.contains("\\int_0^1 x^2 dx"));
+        assert!(output.contains("= \\frac{1}{3}"));
+        assert!(output.contains("```"));
+    }
+
+    #[test]
+    fn test_convert_inline_math() {
+        let input = "The equation $x = y + z$ is simple.";
+        let output = convert_inline_math(input);
+        assert_eq!(output, "The equation $$x = y + z$$ is simple.");
+    }
+
+    #[test]
+    fn test_convert_inline_math_multiple() {
+        let input = "We have $a = b$ and $c = d$ here.";
+        let output = convert_inline_math(input);
+        assert_eq!(output, "We have $$a = b$$ and $$c = d$$ here.");
+    }
+
+    #[test]
+    fn test_convert_inline_math_preserve_content() {
+        let input = "Math: $x = {1}$ and $y^2 + z_i$";
+        let output = convert_inline_math(input);
+        assert_eq!(output, "Math: $$x = {1}$$ and $$y^2 + z_i$$");
+    }
+
+    #[test]
+    fn test_convert_inline_math_does_not_affect_block_math() {
+        // Block math with $$ should not be converted by inline math converter
+        let input = "Text $$x = y$$ more";
+        let output = convert_inline_math(input);
+        assert_eq!(output, input); // Should remain unchanged
+    }
+
+    #[test]
+    fn test_convert_inline_math_with_newline_block() {
+        // Block math with newlines should not be affected
+        let input = "$$\nx = y\n$$";
+        let output = convert_inline_math(input);
+        assert_eq!(output, input); // Should remain unchanged
+    }
+
+    #[test]
+    fn test_math_conversion_integration() {
+        let input = "Text $inline$ math\n$$\nblock\nmath\n$$\nMore $x$ and $$E=mc^2$$";
+        let mut output = convert_math_blocks(input);
+        output = convert_inline_math(&output);
+
+        assert!(output.contains("$$inline$$"));
+        assert!(output.contains("```math\nblock\nmath\n```"));
+        assert!(output.contains("$$x$$"));
+        assert!(output.contains("```math\nE=mc^2\n```"));
+    }
+
+    #[test]
+    fn test_convert_math_blocks_preserves_content() {
+        let input = "$$\\frac{a}{b}$$";
+        let output = convert_math_blocks(input);
+        assert_eq!(output, "```math\n\\frac{a}{b}\n```");
     }
 }
