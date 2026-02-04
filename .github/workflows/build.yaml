@@ -13,7 +13,7 @@ jobs:
             os: ubuntu-latest
             rust: nightly
             target: x86_64-unknown-linux-musl
-            archive-name: fuma_rs-linux.tar.gz
+            archive-name: hoa-backend-linux.tar.gz
       fail-fast: false
 
     steps:
@@ -48,7 +48,7 @@ jobs:
         run: |
           pwd
           ls -al
-          strip "/home/runner/work/fuma-rs/fuma-rs/target/${{ matrix.target }}/release/fuma_rs"
+          strip "/home/runner/work/fuma-rs/fuma-rs/target/${{ matrix.target }}/release/hoa-backend"
 
       - name: Build archive
         shell: bash
@@ -57,8 +57,8 @@ jobs:
           ls -al
           mkdir archive
           cd archive
-          cp "../target/${{ matrix.target }}/release/fuma_rs" ./fuma_rs
-          tar -czf "${{ matrix.archive-name }}" fuma_rs
+          cp "../target/${{ matrix.target }}/release/hoa-backend" ./hoa-backend
+          tar -czf "${{ matrix.archive-name }}" hoa-backend
       - name: Upload archive
         uses: actions/upload-artifact@v4
         with:
@@ -91,6 +91,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            fuma_rs-linux.tar.gz/fuma_rs-linux.tar.gz
+            hoa-backend-linux.tar.gz/hoa-backend-linux.tar.gz
           draft: true
           fail_on_unmatched_files: true

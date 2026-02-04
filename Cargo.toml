@@ -1,10 +1,10 @@
 [package]
-name = "fuma_rs"
+name = "hoa-backend"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "fuma_rs"
+name = "hoa-backend"
 path = "src/main.rs"
 
 [dependencies]

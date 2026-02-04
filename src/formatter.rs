@@ -157,11 +157,23 @@ fn convert_hugo_details_to_accordion(content: &str) -> String {
 /// Convert block-level math delimiters $$ $$ to ```math code blocks
 /// Preserves whether there's a newline after the opening $$
 fn convert_math_blocks(content: &str) -> String {
-    // Match $$ ... $$ (both inline and block forms)
+    // First, extract and protect code blocks
+    let code_block_re = Regex::new(r"```[\s\S]*?```").unwrap();
+    let mut code_blocks = Vec::new();
+    let mut protected_content = content.to_string();
+
+    // Replace code blocks with placeholders
+    for (i, mat) in code_block_re.find_iter(content).enumerate() {
+        code_blocks.push(mat.as_str().to_string());
+        let placeholder = format!("___CODE_BLOCK_PLACEHOLDER_{}___", i);
+        protected_content = protected_content.replacen(mat.as_str(), &placeholder, 1);
+    }
+
+    // Match $$ ... $$ (both inline and block forms) only outside code blocks
     // This regex captures: opening $$, optional newline, content, optional newline, closing $$
     let re = Regex::new(r"\$\$(\r?\n)?([\s\S]*?)(\r?\n)?\$\$").unwrap();
 
-    re.replace_all(content, |caps: &regex::Captures| {
+    let result = re.replace_all(&protected_content, |caps: &regex::Captures| {
         let has_opening_newline = caps.get(1).is_some();
         let math_content = &caps[2];
         let has_closing_newline = caps.get(3).is_some();
@@ -175,14 +187,35 @@ fn convert_math_blocks(content: &str) -> String {
             format!("```math\n{}\n```", math_content)
         }
     })
-    .to_string()
+    .to_string();
+
+    // Restore code blocks
+    let mut final_result = result;
+    for (i, block) in code_blocks.iter().enumerate() {
+        let placeholder = format!("___CODE_BLOCK_PLACEHOLDER_{}___", i);
+        final_result = final_result.replace(&placeholder, block);
+    }
+
+    final_result
 }
 
 /// Convert inline math delimiters $ $ to $$ $$
 /// Only converts single dollar signs, not double dollar signs
 fn convert_inline_math(content: &str) -> String {
+    // First, extract and protect code blocks
+    let code_block_re = Regex::new(r"```[\s\S]*?```").unwrap();
+    let mut code_blocks = Vec::new();
+    let mut protected_content = content.to_string();
+
+    // Replace code blocks with placeholders
+    for (i, mat) in code_block_re.find_iter(content).enumerate() {
+        code_blocks.push(mat.as_str().to_string());
+        let placeholder = format!("___CODE_BLOCK_PLACEHOLDER_{}___", i);
+        protected_content = protected_content.replacen(mat.as_str(), &placeholder, 1);
+    }
+
     let mut result = String::new();
-    let mut chars = content.chars().peekable();
+    let mut chars = protected_content.chars().peekable();
     let mut in_math = false;
     let mut math_buffer = String::new();
 
@@ -239,12 +272,20 @@ fn convert_inline_math(content: &str) -> String {
     }
 
     // Handle unclosed math at end
+    // If we ended while still in math mode, add the unclosed $
     if in_math {
         result.push('$');
         result.push_str(&math_buffer);
     }
 
-    result
+    // Restore code blocks
+    let mut final_result = result;
+    for (i, block) in code_blocks.iter().enumerate() {
+        let placeholder = format!("___CODE_BLOCK_PLACEHOLDER_{}___", i);
+        final_result = final_result.replace(&placeholder, block);
+    }
+
+    final_result
 }
 
 /// Wrap consecutive Accordion blocks in a single Accordions container
@@ -584,5 +625,60 @@ Math: $x = {1}$
         let input = "$$\\frac{a}{b}$$";
         let output = convert_math_blocks(input);
         assert_eq!(output, "```math\n\\frac{a}{b}\n```");
+    }
+
+    #[test]
+    fn test_convert_math_blocks_ignores_code_blocks() {
+        // Math inside code blocks should NOT be converted
+        let input = "Normal text $$x = y$$\n```markdown\n$$\\sin x$$\n```\nMore $$a = b$$";
+        let output = convert_math_blocks(input);
+
+        // Math outside code blocks should be converted
+        assert!(output.contains("```math\nx = y\n```"));
+        assert!(output.contains("```math\na = b\n```"));
+
+        // Math inside code blocks should remain unchanged
+        assert!(output.contains("```markdown\n$$\\sin x$$\n```"));
+    }
+
+    #[test]
+    fn test_convert_inline_math_ignores_code_blocks() {
+        // Inline math inside code blocks should NOT be converted
+        let input = "Normal $x$ math\n```javascript\nlet price = $100;\n```\nMore $y$ here";
+        let output = convert_inline_math(input);
+
+        // Inline math outside code blocks should be converted
+        assert!(output.contains("$$x$$"));
+        assert!(output.contains("$$y$$"));
+
+        // Dollar signs inside code blocks should remain unchanged
+        assert!(output.contains("```javascript\nlet price = $100;\n```"));
+    }
+
+    #[test]
+    fn test_code_block_protection_with_multiple_blocks() {
+        let input = r#"Text with $inline$ math.
+```python
+# This has $$math$$ in code
+x = $5
+```
+More $$block$$ math here.
+```rust
+let formula = "$$E=mc^2$$";
+```
+Final $a$ inline."#;
+
+        let mut output = convert_math_blocks(input);
+        output = convert_inline_math(&output);
+
+        // Check conversions happened outside code blocks
+        assert!(output.contains("$$inline$$"));
+        assert!(output.contains("```math\nblock\n```"));
+        assert!(output.contains("$$a$$"));
+
+        // Check code blocks remained unchanged
+        assert!(output.contains("# This has $$math$$ in code"));
+        assert!(output.contains("x = $5"));
+        assert!(output.contains(r#"let formula = "$$E=mc^2$$";"#));
     }
 }
