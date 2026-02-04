@@ -119,53 +119,41 @@ fn convert_style_to_jsx(content: &str) -> String {
     .to_string()
 }
 
-/// Escape curly braces inside LaTeX math expressions for MDX compatibility
+/// Escapes curly braces `{}` within LaTeX math blocks (`$...$` and `$$...$$`).
+/// This is essential for MDX, where `{}` is otherwise interpreted as JSX.
 fn escape_curly_braces_in_math(content: &str) -> String {
-    let mut result = String::new();
+    let mut result = String::with_capacity(content.len());
     let chars: Vec<char> = content.chars().collect();
     let mut i = 0;
 
     while i < chars.len() {
+        // Detect Math Delimiter
         if chars[i] == '$' {
-            // Check if it's display math ($$)
             let is_display = i + 1 < chars.len() && chars[i + 1] == '$';
-            let delimiter_len = if is_display { 2 } else { 1 };
+            let delimiter = if is_display { "$$" } else { "$" };
+            let del_len = delimiter.len();
 
-            // Find closing delimiter
-            let mut j = i + delimiter_len;
-            let mut found_close = false;
+            // Find closing delimiter starting after the opening one
+            let search_area = &content[i + del_len..];
+            if let Some(relative_end) = search_area.find(delimiter) {
+                let end_pos = i + del_len + relative_end;
 
-            while j < chars.len() {
-                if chars[j] == '$' && j + 1 < chars.len() && chars[j + 1] == '$' {
-                    found_close = true;
-                    break;
-                }
-                j += 1;
-            }
+                // 1. Add opening delimiter
+                result.push_str(delimiter);
 
-            if found_close {
-                // Add opening delimiter
-                for _ in 0..delimiter_len {
-                    result.push('$');
-                }
-
-                // Escape braces in math content
-                for k in (i + delimiter_len)..j {
-                    if chars[k] == '{' || chars[k] == '}' {
-                        // Check if already escaped
-                        if k == 0 || chars[k - 1] != '\\' {
-                            result.push('\\');
-                        }
+                // 2. Process math content with escapes
+                let math_content = &content[i + del_len..end_pos];
+                for (idx, c) in math_content.chars().enumerate() {
+                    if (c == '{' || c == '}') && !is_escaped(math_content, idx) {
+                        result.push('\\');
                     }
-                    result.push(chars[k]);
+                    result.push(c);
                 }
 
-                // Add closing delimiter
-                for _ in 0..delimiter_len {
-                    result.push('$');
-                }
+                // 3. Add closing delimiter
+                result.push_str(delimiter);
 
-                i = j + delimiter_len;
+                i = end_pos + del_len;
                 continue;
             }
         }
@@ -173,8 +161,15 @@ fn escape_curly_braces_in_math(content: &str) -> String {
         result.push(chars[i]);
         i += 1;
     }
-
     result
+}
+
+/// Helper to check if a character at a specific index is already escaped by a backslash
+fn is_escaped(text: &str, idx: usize) -> bool {
+    if idx == 0 {
+        return false;
+    }
+    text.as_bytes().get(idx - 1) == Some(&b'\\')
 }
 
 /// Convert Hugo details shortcode to Fumadocs Accordion components
