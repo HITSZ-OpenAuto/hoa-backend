@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
         )
         .await?;
 
-        println!("✓ Repos fetched successfully\n");
+        println!("✓ Repository fetch completed\n");
     }
 
     // Check if repos directory exists
@@ -106,7 +106,10 @@ async fn main() -> Result<()> {
 
     let shared_categories_config = loader::load_shared_categories(&data_dir);
     if !shared_categories_config.categories.is_empty() {
-        println!("Loaded {} shared categories", shared_categories_config.categories.len());
+        println!(
+            "Loaded {} shared categories",
+            shared_categories_config.categories.len()
+        );
     }
 
     let grades_summary = loader::load_grades_summary(&data_dir);

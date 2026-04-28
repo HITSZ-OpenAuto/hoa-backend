@@ -22,6 +22,12 @@ pub struct GitHubFetcher {
     client: reqwest::Client,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct RepoFetchStatus {
+    has_readme: bool,
+    has_worktree: bool,
+}
+
 impl GitHubFetcher {
     /// Create a new GitHub fetcher with authentication token
     pub fn new(token: String) -> Result<Self> {
@@ -111,15 +117,24 @@ impl GitHubFetcher {
     }
 
     /// Fetch repository data and save to local files
-    pub async fn fetch_repo_data(&self, org: &str, repo: &str, repos_dir: &Path) -> Result<()> {
+    async fn fetch_repo_data(
+        &self,
+        org: &str,
+        repo: &str,
+        repos_dir: &Path,
+    ) -> Result<RepoFetchStatus> {
         let mdx_path = repos_dir.join(format!("{}.mdx", repo));
         let json_path = repos_dir.join(format!("{}.json", repo));
+        let mut status = RepoFetchStatus::default();
 
         // Fetch README if not exists
-        if !mdx_path.exists() {
+        if mdx_path.exists() {
+            status.has_readme = true;
+        } else {
             match self.fetch_readme(org, repo).await {
                 Ok(content) => {
                     fs::write(&mdx_path, content).await?;
+                    status.has_readme = true;
                 }
                 Err(e) => {
                     eprintln!("Warning: Failed to fetch README for {}: {}", repo, e);
@@ -128,10 +143,13 @@ impl GitHubFetcher {
         }
 
         // Fetch worktree.json if not exists
-        if !json_path.exists() {
+        if json_path.exists() {
+            status.has_worktree = true;
+        } else {
             match self.fetch_worktree_json(org, repo).await {
                 Ok(content) => {
                     fs::write(&json_path, content).await?;
+                    status.has_worktree = true;
                 }
                 Err(e) => {
                     eprintln!("Warning: Failed to fetch worktree.json for {}: {}", repo, e);
@@ -139,7 +157,7 @@ impl GitHubFetcher {
             }
         }
 
-        Ok(())
+        Ok(status)
     }
 }
 
@@ -185,12 +203,24 @@ pub async fn fetch_all_repos(
     let results = futures::future::join_all(tasks).await;
 
     // Count successes and failures
-    let mut success_count = 0;
+    let mut ready_count = 0;
+    let mut missing_readme_count = 0;
+    let mut missing_worktree_count = 0;
     let mut error_count = 0;
 
     for result in results {
         match result {
-            Ok(Ok(())) => success_count += 1,
+            Ok(Ok(status)) => {
+                if status.has_readme {
+                    ready_count += 1;
+                } else {
+                    missing_readme_count += 1;
+                }
+
+                if !status.has_worktree {
+                    missing_worktree_count += 1;
+                }
+            }
             Ok(Err(e)) => {
                 error_count += 1;
                 eprintln!("Error: {}", e);
@@ -203,8 +233,8 @@ pub async fn fetch_all_repos(
     }
 
     println!(
-        "Fetch complete: {} succeeded, {} failed",
-        success_count, error_count
+        "Fetch complete: {} with README, {} missing README, {} missing worktree, {} failed",
+        ready_count, missing_readme_count, missing_worktree_count, error_count
     );
 
     Ok(())

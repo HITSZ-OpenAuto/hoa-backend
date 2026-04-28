@@ -9,6 +9,15 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
+#[derive(Debug, Clone)]
+struct SemesterCourseCard {
+    slug: String,
+    name: String,
+    course_nature: Option<String>,
+    assessment_method: Option<String>,
+    source_index: usize,
+}
+
 /// Build YAML frontmatter for a course page using serde_yaml
 fn build_frontmatter(title: &str, course: &Course) -> String {
     let credit = course.credit.unwrap_or(0.0);
@@ -112,6 +121,74 @@ fn minimal_course(repo_id: &str, name: &str, grade_details: Option<Vec<GradeDeta
     }
 }
 
+fn readme_body_content(readme_content: &str) -> String {
+    readme_content
+        .lines()
+        .skip(2)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn missing_repo_notice(repo_id: &str) -> String {
+    format!(
+        "## 课程资料暂缺\n\n\
+当前培养方案中包含这门课程，但 HITSZ-OpenAuto 暂未收录对应的 GitHub 仓库（`{repo_id}`）。\
+\n\n如果你希望补充这门课程的资料，可以参考以下模板创建仓库：\
+\n\n- [普通课程仓库模板](https://github.com/HITSZ-OpenAuto/normal-course-template)\
+\n- [多课程仓库模板](https://github.com/HITSZ-OpenAuto/multi-project-course-template)"
+    )
+}
+
+fn build_course_page_content(
+    frontmatter: &str,
+    content: &str,
+    filetree_content: &str,
+    use_course_info: bool,
+) -> String {
+    let mut sections = vec![frontmatter.to_string()];
+
+    if use_course_info {
+        sections.push("<CourseInfo />".to_string());
+    }
+
+    let body = format!("{}{}", content, filetree_content);
+    if !body.trim().is_empty() {
+        sections.push(body);
+    }
+
+    sections.join("\n\n")
+}
+
+fn course_nature_rank(course_nature: Option<&str>) -> u8 {
+    match course_nature.map(str::trim) {
+        Some("必修") => 0,
+        Some("限选") => 1,
+        Some("选修") => 2,
+        _ => 3,
+    }
+}
+
+fn assessment_method_rank(assessment_method: Option<&str>) -> u8 {
+    match assessment_method.map(str::trim) {
+        Some("考试") => 0,
+        Some("考查") => 1,
+        _ => 2,
+    }
+}
+
+fn sort_semester_cards(cards: &mut [SemesterCourseCard]) {
+    cards.sort_by(|a, b| {
+        course_nature_rank(a.course_nature.as_deref())
+            .cmp(&course_nature_rank(b.course_nature.as_deref()))
+            .then_with(|| {
+                assessment_method_rank(a.assessment_method.as_deref())
+                    .cmp(&assessment_method_rank(b.assessment_method.as_deref()))
+            })
+            .then_with(|| a.source_index.cmp(&b.source_index))
+            .then_with(|| a.slug.cmp(&b.slug))
+    });
+}
+
 /// Generate all course pages and index pages
 pub async fn generate_course_pages(
     plans: &[Plan],
@@ -137,10 +214,10 @@ pub async fn generate_course_pages(
         fs::create_dir_all(&major_dir)?;
 
         // Track courses by semester for this major
-        let mut courses_by_semester: HashMap<String, Vec<(String, String)>> = HashMap::new();
+        let mut courses_by_semester: HashMap<String, Vec<SemesterCourseCard>> = HashMap::new();
 
         // Process each course
-        for course in &plan.courses {
+        for (course_index, course) in plan.courses.iter().enumerate() {
             // Only process courses that exist in repos_list (if repos_list.txt exists)
             if !repos_set.is_empty() && !repos_set.contains(&course.repo_id) {
                 continue;
@@ -148,15 +225,6 @@ pub async fn generate_course_pages(
 
             let mdx_path = repos_dir.join(format!("{}.mdx", course.repo_id));
             let json_path = repos_dir.join(format!("{}.json", course.repo_id));
-
-            if !mdx_path.exists() {
-                continue;
-            }
-
-            // Read README content (skip first 2 lines which are title)
-            let readme_content = fs::read_to_string(&mdx_path)?;
-            let content_lines: Vec<&str> = readme_content.lines().skip(2).collect();
-            let content = content_lines.join("\n");
 
             // Determine target directories based on semester (supports multi-semester values)
             let semester_folders = course
@@ -175,33 +243,45 @@ pub async fn generate_course_pages(
                     courses_by_semester
                         .entry(folder.to_string())
                         .or_default()
-                        .push((course.repo_id.clone(), course.name.clone()));
+                        .push(SemesterCourseCard {
+                            slug: course.repo_id.clone(),
+                            name: course.name.clone(),
+                            course_nature: course.course_nature.clone(),
+                            assessment_method: course.assessment_method.clone(),
+                            source_index: course_index,
+                        });
                     target_dirs.push(sem_dir);
                 }
             }
 
-            // Generate file tree from worktree.json
-            let filetree_content = if json_path.exists() {
-                let json_content = fs::read_to_string(&json_path)?;
-                let worktree: WorktreeData = serde_json::from_str(&json_content)?;
-                let tree = build_file_tree(&worktree, &course.repo_id);
-                let jsx = tree_to_jsx(&tree, 1);
-                format!(
-                    "\n\n## 资源下载\n\n<Files url=\"https://open.osa.moe/openauto/{}\">\n{}\n</Files>",
-                    course.repo_id, jsx
-                )
+            let (content, filetree_content) = if mdx_path.exists() {
+                let readme_content = fs::read_to_string(&mdx_path)?;
+                let content = readme_body_content(&readme_content);
+
+                let filetree_content = if json_path.exists() {
+                    let json_content = fs::read_to_string(&json_path)?;
+                    let worktree: WorktreeData = serde_json::from_str(&json_content)?;
+                    let tree = build_file_tree(&worktree, &course.repo_id);
+                    let jsx = tree_to_jsx(&tree, 1);
+                    format!(
+                        "\n\n## 资源下载\n\n<Files url=\"https://open.osa.moe/openauto/{}\">\n{}\n</Files>",
+                        course.repo_id, jsx
+                    )
+                } else {
+                    String::new()
+                };
+
+                (content, filetree_content)
             } else {
-                String::new()
+                (missing_repo_notice(&course.repo_id), String::new())
             };
 
             // Build frontmatter
             let frontmatter = build_frontmatter(&course.name, course);
 
             // Write course page
-            let page_content = format!(
-                "{}\n\n<CourseInfo />\n\n{}{}",
-                frontmatter, content, filetree_content
-            );
+            let page_content =
+                build_course_page_content(&frontmatter, &content, &filetree_content, true);
             for target_dir in target_dirs {
                 fs::write(
                     target_dir.join(format!("{}.mdx", course.repo_id)),
@@ -222,7 +302,8 @@ pub async fn generate_course_pages(
 
         // Generate semester index pages
         for folder in &ordered_semester_folders {
-            let courses = courses_by_semester.get(folder).cloned().unwrap_or_default();
+            let mut courses = courses_by_semester.get(folder).cloned().unwrap_or_default();
+            sort_semester_cards(&mut courses);
             let sem_dir = major_dir.join(folder);
             let sem_title = get_semester_title_by_folder(folder).unwrap_or(folder.as_str());
 
@@ -234,10 +315,10 @@ pub async fn generate_course_pages(
                 "<Cards>".to_string(),
             ];
 
-            for (slug, name) in &courses {
+            for course in &courses {
                 cards.push(format!(
                     "  <Card title=\"{}\" href=\"/docs/{}/{}/{}/{}\" />",
-                    name, plan.year, plan.major_code, folder, slug
+                    course.name, plan.year, plan.major_code, folder, course.slug
                 ));
             }
             cards.push("</Cards>".to_string());
@@ -269,8 +350,7 @@ pub async fn generate_course_pages(
                 let title = title_from_mdx(&readme_content, repo_id);
                 category_courses.push((repo_id.clone(), title.clone()));
 
-                let content_lines: Vec<&str> = readme_content.lines().skip(2).collect();
-                let content = content_lines.join("\n");
+                let content = readme_body_content(&readme_content);
 
                 let filetree_content = if json_path.exists() {
                     let json_content = fs::read_to_string(&json_path)?;
@@ -292,11 +372,12 @@ pub async fn generate_course_pages(
                 let course = minimal_course(repo_id, &title, grade_details);
                 let frontmatter = build_frontmatter(&title, &course);
                 let use_course_info = !no_course_info_repo_ids.contains(repo_id);
-                let page_content = if use_course_info {
-                    format!("{}\n\n<CourseInfo />\n\n{}{}", frontmatter, content, filetree_content)
-                } else {
-                    format!("{}\n\n{}{}", frontmatter, content, filetree_content)
-                };
+                let page_content = build_course_page_content(
+                    &frontmatter,
+                    &content,
+                    &filetree_content,
+                    use_course_info,
+                );
                 fs::write(cat_dir.join(format!("{}.mdx", repo_id)), &page_content)?;
             }
 
@@ -401,4 +482,80 @@ pub async fn generate_course_pages(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_missing_repo_notice_contains_templates() {
+        let content = missing_repo_notice("MISSING101");
+
+        assert!(content.contains("MISSING101"));
+        assert!(content.contains("normal-course-template"));
+        assert!(content.contains("multi-project-course-template"));
+    }
+
+    #[test]
+    fn test_build_course_page_content_omits_empty_body() {
+        let page = build_course_page_content("---\ntitle: Test\n---", "", "", true);
+
+        assert_eq!(page, "---\ntitle: Test\n---\n\n<CourseInfo />");
+    }
+
+    #[test]
+    fn test_sort_semester_cards_by_nature_and_assessment() {
+        let mut cards = vec![
+            SemesterCourseCard {
+                slug: "LIMITED_NON_EXAM".to_string(),
+                name: "Limited Non Exam".to_string(),
+                course_nature: Some("限选".to_string()),
+                assessment_method: Some("考查".to_string()),
+                source_index: 0,
+            },
+            SemesterCourseCard {
+                slug: "REQUIRED_NON_EXAM_A".to_string(),
+                name: "Required Non Exam A".to_string(),
+                course_nature: Some("必修".to_string()),
+                assessment_method: Some("考查".to_string()),
+                source_index: 1,
+            },
+            SemesterCourseCard {
+                slug: "REQUIRED_EXAM".to_string(),
+                name: "Required Exam".to_string(),
+                course_nature: Some("必修".to_string()),
+                assessment_method: Some("考试".to_string()),
+                source_index: 2,
+            },
+            SemesterCourseCard {
+                slug: "ELECTIVE_EXAM".to_string(),
+                name: "Elective Exam".to_string(),
+                course_nature: Some("选修".to_string()),
+                assessment_method: Some("考试".to_string()),
+                source_index: 3,
+            },
+            SemesterCourseCard {
+                slug: "REQUIRED_NON_EXAM_B".to_string(),
+                name: "Required Non Exam B".to_string(),
+                course_nature: Some("必修".to_string()),
+                assessment_method: Some("考查".to_string()),
+                source_index: 4,
+            },
+        ];
+
+        sort_semester_cards(&mut cards);
+
+        let ordered_slugs: Vec<_> = cards.into_iter().map(|card| card.slug).collect();
+        assert_eq!(
+            ordered_slugs,
+            vec![
+                "REQUIRED_EXAM",
+                "REQUIRED_NON_EXAM_A",
+                "REQUIRED_NON_EXAM_B",
+                "LIMITED_NON_EXAM",
+                "ELECTIVE_EXAM",
+            ]
+        );
+    }
 }

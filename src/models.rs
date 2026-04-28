@@ -152,7 +152,7 @@ mod tests {
             title: "Test Course".to_string(),
             description: "A test description".to_string(),
             course: CourseMetadata {
-                credit: 3,
+                credit: 3.0,
                 assessment_method: "Exam".to_string(),
                 course_nature: "Required".to_string(),
                 hour_distribution: HourDistributionMeta {
@@ -193,7 +193,7 @@ mod tests {
             title: "Advanced Math".to_string(),
             description: "".to_string(),
             course: CourseMetadata {
-                credit: 4,
+                credit: 4.0,
                 assessment_method: "Mixed".to_string(),
                 course_nature: "Elective".to_string(),
                 hour_distribution: HourDistributionMeta {
@@ -238,7 +238,7 @@ mod tests {
             title: "Simple Course".to_string(),
             description: "No grading details".to_string(),
             course: CourseMetadata {
-                credit: 2,
+                credit: 2.0,
                 assessment_method: "Pass/Fail".to_string(),
                 course_nature: "Optional".to_string(),
                 hour_distribution: HourDistributionMeta {
@@ -265,7 +265,7 @@ mod tests {
             title: "Complex Course".to_string(),
             description: "".to_string(),
             course: CourseMetadata {
-                credit: 5,
+                credit: 5.0,
                 assessment_method: "Comprehensive".to_string(),
                 course_nature: "Core".to_string(),
                 hour_distribution: HourDistributionMeta {
