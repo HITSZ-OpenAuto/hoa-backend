@@ -114,20 +114,7 @@ async fn main() -> Result<()> {
 
     let grades_summary = loader::load_grades_summary(&data_dir);
 
-    // Filter courses by repos_set (if repos_list.txt exists)
-    let filtered_plans: Vec<_> = if repos_set.is_empty() {
-        plans
-    } else {
-        plans
-            .into_iter()
-            .map(|mut plan| {
-                plan.courses.retain(|c| repos_set.contains(&c.repo_id));
-                plan
-            })
-            .collect()
-    };
-
-    let total_courses: usize = filtered_plans.iter().map(|p| p.courses.len()).sum();
+    let total_courses: usize = plans.iter().map(|p| p.courses.len()).sum();
     println!("Total courses to process: {}", total_courses);
 
     // Generate course pages
@@ -139,7 +126,7 @@ async fn main() -> Result<()> {
 
     println!("Generating course pages...");
     generator::generate_course_pages(
-        &filtered_plans,
+        &plans,
         &shared_categories_config.categories,
         &shared_categories_config.no_course_info_repo_ids,
         &grades_summary,

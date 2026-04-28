@@ -218,11 +218,6 @@ pub async fn generate_course_pages(
 
         // Process each course
         for (course_index, course) in plan.courses.iter().enumerate() {
-            // Only process courses that exist in repos_list (if repos_list.txt exists)
-            if !repos_set.is_empty() && !repos_set.contains(&course.repo_id) {
-                continue;
-            }
-
             let mdx_path = repos_dir.join(format!("{}.mdx", course.repo_id));
             let json_path = repos_dir.join(format!("{}.json", course.repo_id));
 
@@ -557,5 +552,83 @@ mod tests {
                 "ELECTIVE_EXAM",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn test_generate_placeholder_for_plan_course_not_in_repos_list() {
+        use std::collections::{HashMap, HashSet};
+        use std::path::PathBuf;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        fn make_temp_dir(prefix: &str) -> PathBuf {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!("{prefix}-{unique}"));
+            fs::create_dir_all(&path).unwrap();
+            path
+        }
+
+        let repo_root = make_temp_dir("hoa-generator-test");
+        let repos_dir = repo_root.join("repos");
+        let docs_dir = repo_root.join("docs");
+        fs::create_dir_all(&repos_dir).unwrap();
+        fs::create_dir_all(&docs_dir).unwrap();
+
+        let plans = vec![Plan {
+            year: "2024".to_string(),
+            major_code: "CS".to_string(),
+            major_name: "Computer Science".to_string(),
+            courses: vec![Course {
+                repo_id: "MISSING101".to_string(),
+                name: "Missing Course".to_string(),
+                credit: Some(2.0),
+                assessment_method: Some("考查".to_string()),
+                course_nature: Some("必修".to_string()),
+                recommended_semester: Some("第一学年秋季".to_string()),
+                hours: None,
+                grade_details: None,
+            }],
+        }];
+
+        let repos_set = HashSet::from([String::from("EXISTING101")]);
+        let shared_categories: Vec<SharedCategory> = Vec::new();
+        let no_course_info_repo_ids = HashSet::new();
+        let grades_summary: HashMap<String, HashMap<String, Vec<GradeDetail>>> = HashMap::new();
+
+        generate_course_pages(
+            &plans,
+            &shared_categories,
+            &no_course_info_repo_ids,
+            &grades_summary,
+            &repos_dir,
+            &docs_dir,
+            &repos_set,
+        )
+        .await
+        .unwrap();
+
+        let course_page = docs_dir
+            .join("2024")
+            .join("CS")
+            .join("fresh-autumn")
+            .join("MISSING101.mdx");
+        let semester_index = docs_dir
+            .join("2024")
+            .join("CS")
+            .join("fresh-autumn")
+            .join("index.mdx");
+
+        assert!(course_page.exists());
+        assert!(semester_index.exists());
+
+        let page_content = fs::read_to_string(course_page).unwrap();
+        let index_content = fs::read_to_string(semester_index).unwrap();
+
+        assert!(page_content.contains("课程资料暂缺"));
+        assert!(index_content.contains("Missing Course"));
+
+        let _ = fs::remove_dir_all(repo_root);
     }
 }
