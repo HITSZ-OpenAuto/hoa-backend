@@ -131,11 +131,8 @@ fn readme_body_content(readme_content: &str) -> String {
 
 fn missing_repo_notice(repo_id: &str) -> String {
     format!(
-        "## 课程资料暂缺\n\n\
-当前培养方案中包含这门课程，但 HITSZ-OpenAuto 暂未收录对应的 GitHub 仓库（`{repo_id}`）。\
-\n\n如果你希望补充这门课程的资料，可以参考以下模板创建仓库：\
-\n\n- [普通课程仓库模板](https://github.com/HITSZ-OpenAuto/normal-course-template)\
-\n- [多课程仓库模板](https://github.com/HITSZ-OpenAuto/multi-project-course-template)"
+        "当前培养方案中包含这门课程，但 HOA 暂未收录对应的 GitHub 仓库（`{repo_id}`）/建立相关的映射。\
+\n\n如果你希望补充这门课程的资料，请前往 [HOA Wiki](https://wiki.hoa.moe/contribution-guide/course-mapping) 查看如何建立映射或者联系管理员添加仓库。"
     )
 }
 
