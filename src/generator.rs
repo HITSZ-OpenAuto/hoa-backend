@@ -395,9 +395,9 @@ pub async fn generate_course_pages(
         }
 
         // Write major metadata
-        let pages: Vec<String> = std::iter::once("...".to_string())
-            .chain(ordered_semester_folders.iter().cloned())
+        let pages: Vec<String> = ordered_semester_folders.iter().cloned()
             .chain(category_pages.iter().cloned())
+            .chain(std::iter::once("...".to_string()))
             .collect();
 
         let major_meta = serde_json::json!({
