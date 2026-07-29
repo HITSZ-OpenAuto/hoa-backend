@@ -48,9 +48,6 @@ macro_rules! static_regex {
     };
 }
 
-static_regex!(RE_HTML_COMMENT, r"<!--");
-// TOML-* comments are structured metadata written by HOA tooling, not author mistakes
-static_regex!(RE_TOML_COMMENT, r"<!--\s*TOML-");
 static_regex!(RE_BARE_URL, r"<https?://[^>]+>");
 static_regex!(RE_BR_HR, r"<(?:br|hr)\s*>");
 static_regex!(RE_EMPTY_TR, r"<tr>\s*</(?:table|tr)>");
@@ -62,13 +59,6 @@ static_regex!(RE_INLINE_MATH, r"(?:^|[^$])\$[^$\n]+\$(?:[^$]|$)");
 static_regex!(RE_CODE_FENCE, r"^\s*(```|~~~)");
 
 const LINE_RULES: &[LineRule] = &[
-    LineRule {
-        rule: "no-html-comment",
-        severity: Severity::Error,
-        pattern: &RE_HTML_COMMENT,
-        exception: Some(&RE_TOML_COMMENT),
-        message: "HTML comment is invalid in MDX; use {/* ... */} or remove it",
-    },
     LineRule {
         rule: "no-bare-url",
         severity: Severity::Error,
@@ -210,14 +200,10 @@ mod tests {
     }
 
     #[test]
-    fn test_detects_html_comment() {
-        assert_eq!(rules_of("Hello <!-- hidden --> world"), ["no-html-comment"]);
-    }
-
-    #[test]
-    fn test_allows_toml_metadata_comments() {
+    fn test_allows_html_comments() {
+        // HTML comments are stripped by the formatter, not reported upstream
+        assert!(rules_of("Hello <!-- hidden --> world").is_empty());
         assert!(rules_of(r#"<!-- TOML-SECTION: title="教材" -->"#).is_empty());
-        assert!(rules_of(r#"<!-- TOML-META: repo_type="normal" -->"#).is_empty());
     }
 
     #[test]
@@ -282,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_line_numbers() {
-        let content = "clean\n<br>\nclean\n<!-- c -->";
+        let content = "clean\n<br>\nclean\n<https://example.com>";
         let issues = lint_content(content);
         assert_eq!(issues.len(), 2);
         assert_eq!(issues[0].line, 2);
