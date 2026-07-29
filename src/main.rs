@@ -8,6 +8,7 @@ mod error;
 mod fetcher;
 mod formatter;
 mod generator;
+mod linter;
 mod loader;
 mod models;
 mod tree;
@@ -25,11 +26,15 @@ use std::{env, fs};
 /// 4. Generates course pages with YAML frontmatter, formatting source
 ///    READMEs in memory for Fumadocs compatibility
 /// 5. Builds file trees from worktree.json data
+///
+/// With --lint, reports MDX issues in fetched READMEs instead of
+/// generating pages. Exits non-zero if any errors are found.
 #[tokio::main]
 async fn main() -> Result<()> {
     // Check for --fetch flag
     let args: Vec<String> = env::args().collect();
     let should_fetch = args.contains(&"--fetch".to_string());
+    let should_lint = args.contains(&"--lint".to_string());
 
     let repo_root = Path::new(".").to_path_buf();
 
@@ -86,6 +91,26 @@ async fn main() -> Result<()> {
         eprintln!("Please run with --fetch flag or ensure repos have been fetched.");
         eprintln!("\nExpected directory: {}", repos_dir.display());
         std::process::exit(1);
+    }
+
+    // Lint mode: report issues in source READMEs instead of generating
+    if should_lint {
+        println!("\n=== Linting source MDX files ===");
+        let (file_count, error_count, warning_count) = linter::lint_all_mdx_files(&repos_dir)?;
+
+        if file_count == 0 {
+            println!("✓ No issues found");
+        } else {
+            println!(
+                "\n{} error(s), {} warning(s) in {} file(s)",
+                error_count, warning_count, file_count
+            );
+        }
+
+        if error_count > 0 {
+            std::process::exit(1);
+        }
+        return Ok(());
     }
 
     // Load repos list (optional filter)
