@@ -92,7 +92,7 @@ const LINE_RULES: &[LineRule] = &[
         severity: Severity::Error,
         pattern: &RE_HUGO_CALLOUT,
         exception: None,
-        message: "Hugo callout shortcode is invalid in MDX; use <Callout> or remove it",
+        message: "Hugo callout shortcode is invalid in MDX; use a > [!NOTE] blockquote alert",
     },
     LineRule {
         rule: "no-hugo-details",
@@ -150,14 +150,20 @@ pub fn lint_content(content: &str) -> Vec<LintIssue> {
     issues
 }
 
-/// Lint all MDX files in a directory. Returns (files with issues, error count, warning count).
-pub fn lint_all_mdx_files(repos_dir: &Path) -> crate::error::Result<(usize, usize, usize)> {
-    let mut entries: Vec<_> = fs::read_dir(repos_dir)?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|ext| ext == "mdx"))
-        .collect();
-    entries.sort();
+/// Lint a target path: a single markdown file, or a directory of .mdx files.
+/// Returns (files with issues, error count, warning count).
+pub fn lint_path(target: &Path) -> crate::error::Result<(usize, usize, usize)> {
+    let entries: Vec<_> = if target.is_file() {
+        vec![target.to_path_buf()]
+    } else {
+        let mut entries: Vec<_> = fs::read_dir(target)?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|ext| ext == "mdx"))
+            .collect();
+        entries.sort();
+        entries
+    };
 
     let mut files_with_issues = 0;
     let mut error_count = 0;
@@ -171,10 +177,7 @@ pub fn lint_all_mdx_files(repos_dir: &Path) -> crate::error::Result<(usize, usiz
         }
 
         files_with_issues += 1;
-        let name = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or_default();
+        let name = path.display();
 
         for issue in &issues {
             match issue.severity {

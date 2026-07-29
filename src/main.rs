@@ -34,13 +34,43 @@ async fn main() -> Result<()> {
     // Check for --fetch flag
     let args: Vec<String> = env::args().collect();
     let should_fetch = args.contains(&"--fetch".to_string());
-    let should_lint = args.contains(&"--lint".to_string());
+    let lint_pos = args.iter().position(|a| a == "--lint");
 
     let repo_root = Path::new(".").to_path_buf();
+    let repos_dir = repo_root.join("repos");
+
+    // Lint mode: report issues in source files instead of generating.
+    // Lints the given file/directory, or ./repos by default.
+    if let Some(pos) = lint_pos {
+        let target = args
+            .get(pos + 1)
+            .filter(|a| !a.starts_with("--"))
+            .map(|a| Path::new(a).to_path_buf())
+            .unwrap_or(repos_dir);
+
+        if !target.exists() {
+            eprintln!("Error: lint target not found: {}", target.display());
+            std::process::exit(1);
+        }
+
+        let (file_count, error_count, warning_count) = linter::lint_path(&target)?;
+
+        if file_count == 0 {
+            println!("✓ No issues found");
+        } else {
+            println!(
+                "\n{} error(s), {} warning(s) in {} file(s)",
+                error_count, warning_count, file_count
+            );
+        }
+
+        if error_count > 0 {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
 
     println!("Repository root: {}", repo_root.display());
-
-    let repos_dir = repo_root.join("repos");
 
     // Fetch repos from GitHub if --fetch flag is provided
     if should_fetch {
@@ -91,26 +121,6 @@ async fn main() -> Result<()> {
         eprintln!("Please run with --fetch flag or ensure repos have been fetched.");
         eprintln!("\nExpected directory: {}", repos_dir.display());
         std::process::exit(1);
-    }
-
-    // Lint mode: report issues in source READMEs instead of generating
-    if should_lint {
-        println!("\n=== Linting source MDX files ===");
-        let (file_count, error_count, warning_count) = linter::lint_all_mdx_files(&repos_dir)?;
-
-        if file_count == 0 {
-            println!("✓ No issues found");
-        } else {
-            println!(
-                "\n{} error(s), {} warning(s) in {} file(s)",
-                error_count, warning_count, file_count
-            );
-        }
-
-        if error_count > 0 {
-            std::process::exit(1);
-        }
-        return Ok(());
     }
 
     // Load repos list (optional filter)
