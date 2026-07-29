@@ -124,7 +124,18 @@ async fn main() -> Result<()> {
         fs::create_dir_all(&docs_dir)?;
     }
 
+    // Format source README files before generation
+    println!("Formatting source MDX files...");
+    let fmt_start = std::time::Instant::now();
+    let modified_count = formatter::format_all_mdx_files(&repos_dir)?;
+    println!(
+        "Formatted {} source MDX files in {:.2?}",
+        modified_count,
+        fmt_start.elapsed()
+    );
+
     println!("Generating course pages...");
+    let gen_start = std::time::Instant::now();
     generator::generate_course_pages(
         &plans,
         &shared_categories_config.categories,
@@ -135,12 +146,10 @@ async fn main() -> Result<()> {
         &repos_set,
     )
     .await?;
-    println!("Course pages generated successfully");
-
-    // Format MDX files
-    println!("Formatting MDX files...");
-    let modified_count = formatter::format_all_mdx_files(&docs_dir)?;
-    println!("Formatted {} MDX files", modified_count);
+    println!(
+        "Course pages generated successfully in {:.2?}",
+        gen_start.elapsed()
+    );
 
     println!("\n✓ Done! All pages generated and formatted.");
 
