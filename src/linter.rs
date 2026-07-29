@@ -51,7 +51,6 @@ macro_rules! static_regex {
 static_regex!(RE_HTML_COMMENT, r"<!--");
 // TOML-* comments are structured metadata written by HOA tooling, not author mistakes
 static_regex!(RE_TOML_COMMENT, r"<!--\s*TOML-");
-static_regex!(RE_SHIELD_BADGE, r"https://img\.shields\.io");
 static_regex!(RE_BARE_URL, r"<https?://[^>]+>");
 static_regex!(RE_BR_HR, r"<(?:br|hr)\s*>");
 static_regex!(RE_EMPTY_TR, r"<tr>\s*</(?:table|tr)>");
@@ -110,28 +109,21 @@ const LINE_RULES: &[LineRule] = &[
         severity: Severity::Error,
         pattern: &RE_HUGO_DETAILS,
         exception: None,
-        message: "Hugo details shortcode is invalid in MDX; use <Accordion title=\"...\">",
+        message: "Hugo details shortcode is invalid in MDX; use <details><summary>...</summary>",
     },
     LineRule {
         rule: "block-math-style",
         severity: Severity::Warning,
         pattern: &RE_BLOCK_MATH,
         exception: None,
-        message: "$$ math delimiters; HOA convention is a ```math code block",
+        message: "$$ math delimiters; converted to ```math by hoa-backend until hoa-fuma supports remark-math",
     },
     LineRule {
         rule: "inline-math-style",
         severity: Severity::Warning,
         pattern: &RE_INLINE_MATH,
         exception: None,
-        message: "single-$ inline math; HOA convention is $$...$$",
-    },
-    LineRule {
-        rule: "no-shield-badge",
-        severity: Severity::Warning,
-        pattern: &RE_SHIELD_BADGE,
-        exception: None,
-        message: "shields.io badge is stripped from course pages; remove it",
+        message: "single-$ inline math; converted to $$...$$ by hoa-backend until hoa-fuma supports remark-math",
     },
 ];
 
@@ -284,11 +276,8 @@ mod tests {
     }
 
     #[test]
-    fn test_detects_shield_badge() {
-        assert_eq!(
-            rules_of("![badge](https://img.shields.io/badge/x)"),
-            ["no-shield-badge"]
-        );
+    fn test_allows_shield_badge() {
+        assert!(rules_of("![badge](https://img.shields.io/badge/x)").is_empty());
     }
 
     #[test]
