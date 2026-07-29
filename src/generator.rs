@@ -247,7 +247,8 @@ pub async fn generate_course_pages(
             }
 
             let (content, filetree_content) = if mdx_path.exists() {
-                let readme_content = crate::formatter::format_mdx_file(&fs::read_to_string(&mdx_path)?);
+                let readme_content =
+                    crate::formatter::format_mdx_file(&fs::read_to_string(&mdx_path)?);
                 let content = readme_body_content(&readme_content);
 
                 let filetree_content = if json_path.exists() {
@@ -482,12 +483,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_missing_repo_notice_contains_templates() {
+    fn test_missing_repo_notice_contains_mapping_guide() {
         let content = missing_repo_notice("MISSING101");
 
         assert!(content.contains("MISSING101"));
-        assert!(content.contains("normal-course-template"));
-        assert!(content.contains("multi-project-course-template"));
+        assert!(content.contains("wiki.hoa.moe/contribution-guide/course-mapping"));
     }
 
     #[test]
@@ -624,7 +624,7 @@ mod tests {
         let page_content = fs::read_to_string(course_page).unwrap();
         let index_content = fs::read_to_string(semester_index).unwrap();
 
-        assert!(page_content.contains("课程资料暂缺"));
+        assert!(page_content.contains("wiki.hoa.moe/contribution-guide/course-mapping"));
         assert!(index_content.contains("Missing Course"));
 
         let _ = fs::remove_dir_all(repo_root);

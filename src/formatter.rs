@@ -177,8 +177,7 @@ fn convert_hugo_details_to_accordion(content: &str) -> String {
 
 /// Convert HTML details/summary blocks to Fumadocs Accordion components
 fn convert_html_details_to_accordion(content: &str) -> String {
-    let re_open =
-        Regex::new(r"(?s)<details[^>]*>\s*<summary>\s*(.*?)\s*</summary>").unwrap();
+    let re_open = Regex::new(r"(?s)<details[^>]*>\s*<summary>\s*(.*?)\s*</summary>").unwrap();
     let mut result = re_open
         .replace_all(content, |caps: &regex::Captures| {
             let title = caps[1].replace('"', "\\\"");

@@ -134,9 +134,7 @@ pub fn lint_content(content: &str) -> Vec<LintIssue> {
         }
 
         for rule in LINE_RULES {
-            if rule.pattern.is_match(line)
-                && !rule.exception.is_some_and(|re| re.is_match(line))
-            {
+            if rule.pattern.is_match(line) && !rule.exception.is_some_and(|re| re.is_match(line)) {
                 issues.push(LintIssue {
                     line: line_no,
                     rule: rule.rule,
@@ -237,7 +235,10 @@ mod tests {
 
     #[test]
     fn test_detects_hugo_shortcodes() {
-        assert_eq!(rules_of(r#"{{< callout type="info" >}}"#), ["no-hugo-callout"]);
+        assert_eq!(
+            rules_of(r#"{{< callout type="info" >}}"#),
+            ["no-hugo-callout"]
+        );
         assert_eq!(rules_of("{{< /callout >}}"), ["no-hugo-callout"]);
         assert_eq!(
             rules_of(r#"{{% details title="t" %}}"#),
