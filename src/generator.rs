@@ -247,7 +247,7 @@ pub async fn generate_course_pages(
             }
 
             let (content, filetree_content) = if mdx_path.exists() {
-                let readme_content = fs::read_to_string(&mdx_path)?;
+                let readme_content = crate::formatter::format_mdx_file(&fs::read_to_string(&mdx_path)?);
                 let content = readme_body_content(&readme_content);
 
                 let filetree_content = if json_path.exists() {
@@ -338,7 +338,8 @@ pub async fn generate_course_pages(
                     continue;
                 }
 
-                let readme_content = fs::read_to_string(&mdx_path)?;
+                let readme_content =
+                    crate::formatter::format_mdx_file(&fs::read_to_string(&mdx_path)?);
                 let title = title_from_mdx(&readme_content, repo_id);
                 category_courses.push((repo_id.clone(), title.clone()));
 

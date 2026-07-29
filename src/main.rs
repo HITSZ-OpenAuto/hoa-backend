@@ -22,9 +22,9 @@ use std::{env, fs};
 /// 1. (Optional) Fetches repos data from GitHub
 /// 2. Loads all training plans from TOML files (avoiding N+1 queries)
 /// 3. Filters courses based on repos_list.txt
-/// 4. Generates course pages with YAML frontmatter
+/// 4. Generates course pages with YAML frontmatter, formatting source
+///    READMEs in memory for Fumadocs compatibility
 /// 5. Builds file trees from worktree.json data
-/// 6. Formats MDX files for Fumadocs compatibility
 #[tokio::main]
 async fn main() -> Result<()> {
     // Check for --fetch flag
@@ -123,16 +123,6 @@ async fn main() -> Result<()> {
         println!("Creating output directory: {}", docs_dir.display());
         fs::create_dir_all(&docs_dir)?;
     }
-
-    // Format source README files before generation
-    println!("Formatting source MDX files...");
-    let fmt_start = std::time::Instant::now();
-    let modified_count = formatter::format_all_mdx_files(&repos_dir)?;
-    println!(
-        "Formatted {} source MDX files in {:.2?}",
-        modified_count,
-        fmt_start.elapsed()
-    );
 
     println!("Generating course pages...");
     let gen_start = std::time::Instant::now();

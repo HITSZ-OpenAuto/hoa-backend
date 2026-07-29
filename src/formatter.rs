@@ -1,7 +1,4 @@
 use regex::Regex;
-use std::fs;
-use std::path::Path;
-use walkdir::WalkDir;
 
 /// Format a single MDX file with all transformations
 pub fn format_mdx_file(content: &str) -> String {
@@ -375,28 +372,6 @@ fn wrap_accordions_in_container(content: &str) -> String {
     }
 
     result.join("\n")
-}
-
-/// Format all MDX files in a directory recursively
-pub fn format_all_mdx_files(docs_dir: &Path) -> crate::error::Result<usize> {
-    let mut modified_count = 0;
-
-    for entry in WalkDir::new(docs_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "mdx"))
-    {
-        let path = entry.path();
-        let original = fs::read_to_string(path)?;
-        let formatted = format_mdx_file(&original);
-
-        if formatted != original {
-            fs::write(path, formatted)?;
-            modified_count += 1;
-        }
-    }
-
-    Ok(modified_count)
 }
 
 #[cfg(test)]
