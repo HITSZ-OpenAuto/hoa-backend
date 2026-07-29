@@ -1,7 +1,4 @@
 use regex::Regex;
-use std::fs;
-use std::path::Path;
-use walkdir::WalkDir;
 
 /// Format a single MDX file with all transformations
 pub fn format_mdx_file(content: &str) -> String {
@@ -16,6 +13,8 @@ pub fn format_mdx_file(content: &str) -> String {
     result = convert_style_to_jsx(&result);
     result = convert_hugo_callout_shortcodes(&result);
     result = convert_hugo_details_to_accordion(&result);
+    result = convert_html_details_to_accordion(&result);
+    result = wrap_accordions_in_container(&result);
     result = convert_math_blocks(&result);
     result = convert_inline_math(&result);
 
@@ -173,8 +172,21 @@ fn convert_hugo_details_to_accordion(content: &str) -> String {
     // Handle any remaining standalone closing tags
     result = result.replace("{{% /details %}}", "</Accordion>");
 
-    // Wrap consecutive Accordion blocks in Accordions
-    result = wrap_accordions_in_container(&result);
+    result
+}
+
+/// Convert HTML details/summary blocks to Fumadocs Accordion components
+fn convert_html_details_to_accordion(content: &str) -> String {
+    let re_open =
+        Regex::new(r"(?s)<details[^>]*>\s*<summary>\s*(.*?)\s*</summary>").unwrap();
+    let mut result = re_open
+        .replace_all(content, |caps: &regex::Captures| {
+            let title = caps[1].replace('"', "\\\"");
+            format!("<Accordion title=\"{}\">", title)
+        })
+        .to_string();
+
+    result = result.replace("</details>", "</Accordion>");
 
     result
 }
@@ -377,28 +389,6 @@ fn wrap_accordions_in_container(content: &str) -> String {
     result.join("\n")
 }
 
-/// Format all MDX files in a directory recursively
-pub fn format_all_mdx_files(docs_dir: &Path) -> crate::error::Result<usize> {
-    let mut modified_count = 0;
-
-    for entry in WalkDir::new(docs_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "mdx"))
-    {
-        let path = entry.path();
-        let original = fs::read_to_string(path)?;
-        let formatted = format_mdx_file(&original);
-
-        if formatted != original {
-            fs::write(path, formatted)?;
-            modified_count += 1;
-        }
-    }
-
-    Ok(modified_count)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -545,6 +535,49 @@ Warning content
         assert!(!output.contains("{{% callout"));
         assert!(!output.contains("{{% /callout"));
         assert!(output.contains("Warning content"));
+    }
+
+    #[test]
+    fn test_convert_html_details_to_accordion() {
+        let input = "<details>\n<summary>Question</summary>\n\nAnswer here\n\n</details>";
+        let output = convert_html_details_to_accordion(input);
+        assert!(output.contains("<Accordion title=\"Question\">"));
+        assert!(output.contains("Answer here"));
+        assert!(output.contains("</Accordion>"));
+        assert!(!output.contains("<details"));
+        assert!(!output.contains("</summary>"));
+    }
+
+    #[test]
+    fn test_convert_html_details_with_attributes() {
+        let input = "<details open>\n<summary>Title</summary>\ncontent\n</details>";
+        let output = convert_html_details_to_accordion(input);
+        assert!(output.contains("<Accordion title=\"Title\">"));
+        assert!(output.contains("</Accordion>"));
+    }
+
+    #[test]
+    fn test_convert_html_details_inline_summary() {
+        let input = "<details><summary>成绩构成</summary>\n内容\n</details>";
+        let output = convert_html_details_to_accordion(input);
+        assert!(output.contains("<Accordion title=\"成绩构成\">"));
+    }
+
+    #[test]
+    fn test_convert_html_details_escapes_quotes() {
+        let input = "<details><summary>He said \"hi\"</summary>\nx\n</details>";
+        let output = convert_html_details_to_accordion(input);
+        assert!(output.contains(r#"<Accordion title="He said \"hi\"">"#));
+    }
+
+    #[test]
+    fn test_html_details_wrapped_in_accordions() {
+        let input = "<details>\n<summary>Q1</summary>\nA1\n</details>\n<details>\n<summary>Q2</summary>\nA2\n</details>";
+        let output = format_mdx_file(input);
+        assert!(output.contains("<Accordions>"));
+        assert!(output.contains("</Accordions>"));
+        assert!(output.contains("<Accordion title=\"Q1\">"));
+        assert!(output.contains("<Accordion title=\"Q2\">"));
     }
 
     #[test]

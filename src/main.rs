@@ -8,6 +8,7 @@ mod error;
 mod fetcher;
 mod formatter;
 mod generator;
+mod linter;
 mod loader;
 mod models;
 mod tree;
@@ -22,20 +23,54 @@ use std::{env, fs};
 /// 1. (Optional) Fetches repos data from GitHub
 /// 2. Loads all training plans from TOML files (avoiding N+1 queries)
 /// 3. Filters courses based on repos_list.txt
-/// 4. Generates course pages with YAML frontmatter
+/// 4. Generates course pages with YAML frontmatter, formatting source
+///    READMEs in memory for Fumadocs compatibility
 /// 5. Builds file trees from worktree.json data
-/// 6. Formats MDX files for Fumadocs compatibility
+///
+/// With --lint, reports MDX issues in fetched READMEs instead of
+/// generating pages. Exits non-zero if any errors are found.
 #[tokio::main]
 async fn main() -> Result<()> {
     // Check for --fetch flag
     let args: Vec<String> = env::args().collect();
     let should_fetch = args.contains(&"--fetch".to_string());
+    let lint_pos = args.iter().position(|a| a == "--lint");
 
     let repo_root = Path::new(".").to_path_buf();
+    let repos_dir = repo_root.join("repos");
+
+    // Lint mode: report issues in source files instead of generating.
+    // Lints the given file/directory, or ./repos by default.
+    if let Some(pos) = lint_pos {
+        let target = args
+            .get(pos + 1)
+            .filter(|a| !a.starts_with("--"))
+            .map(|a| Path::new(a).to_path_buf())
+            .unwrap_or(repos_dir);
+
+        if !target.exists() {
+            eprintln!("Error: lint target not found: {}", target.display());
+            std::process::exit(1);
+        }
+
+        let (file_count, error_count, warning_count) = linter::lint_path(&target)?;
+
+        if file_count == 0 {
+            println!("✓ No issues found");
+        } else {
+            println!(
+                "\n{} error(s), {} warning(s) in {} file(s)",
+                error_count, warning_count, file_count
+            );
+        }
+
+        if error_count > 0 {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
 
     println!("Repository root: {}", repo_root.display());
-
-    let repos_dir = repo_root.join("repos");
 
     // Fetch repos from GitHub if --fetch flag is provided
     if should_fetch {
@@ -123,16 +158,6 @@ async fn main() -> Result<()> {
         println!("Creating output directory: {}", docs_dir.display());
         fs::create_dir_all(&docs_dir)?;
     }
-
-    // Format source README files before generation
-    println!("Formatting source MDX files...");
-    let fmt_start = std::time::Instant::now();
-    let modified_count = formatter::format_all_mdx_files(&repos_dir)?;
-    println!(
-        "Formatted {} source MDX files in {:.2?}",
-        modified_count,
-        fmt_start.elapsed()
-    );
 
     println!("Generating course pages...");
     let gen_start = std::time::Instant::now();
