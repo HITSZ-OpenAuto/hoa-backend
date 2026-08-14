@@ -24,6 +24,8 @@ struct TomlSharedCategory {
     id: String,
     title: String,
     repo_ids: Vec<String>,
+    #[serde(default)]
+    study_levels: Vec<String>,
 }
 
 /// Grades summary data structure mapping repository IDs to grade details per plan variant
@@ -168,7 +170,7 @@ pub fn load_all_plans(data_dir: &Path) -> Result<Vec<Plan>> {
         let toml_plan: TomlPlan = toml::from_str(&content)?;
 
         // Enrich courses with grade_details from grades_summary.json
-        let courses = toml_plan
+        let courses: Vec<Course> = toml_plan
             .courses
             .into_iter()
             .map(|c| {
@@ -200,10 +202,19 @@ pub fn load_all_plans(data_dir: &Path) -> Result<Vec<Plan>> {
             })
             .collect();
 
+        if courses.is_empty() {
+            eprintln!(
+                "Warning: skipping empty plan {} {} ({})",
+                toml_plan.info.year, toml_plan.info.major_name, toml_plan.info.major_code
+            );
+            continue;
+        }
+
         plans.push(Plan {
             year: toml_plan.info.year,
             major_code: toml_plan.info.major_code,
             major_name: toml_plan.info.major_name,
+            study_level: toml_plan.info.study_level,
             courses,
         });
     }
@@ -261,6 +272,7 @@ pub fn load_shared_categories(data_dir: &Path) -> SharedCategoriesConfig {
                 id: c.id,
                 title: c.title,
                 repo_ids: c.repo_ids,
+                study_levels: c.study_levels,
             })
             .collect(),
         no_course_info_repo_ids: toml.no_course_info_repo_ids.into_iter().collect(),

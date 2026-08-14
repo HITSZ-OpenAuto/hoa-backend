@@ -15,6 +15,8 @@ pub const SEMESTER_MAPPING: &[(&str, &str, &str)] = &[
     ("第五学年秋季", "fifth-autumn", "大五·秋"),
     ("第五学年春季", "fifth-spring", "大五·春"),
     ("第五学年夏季", "fifth-summer", "大五·夏"),
+    ("秋季", "autumn", "秋季"),
+    ("春季", "spring", "春季"),
 ];
 
 /// Get semester folder and title from Chinese semester name
@@ -131,6 +133,12 @@ mod tests {
     fn test_parse_semester_folders_single() {
         let result = parse_semester_folders("第二学年夏季");
         assert_eq!(result, vec![("sophomore-summer", "大二·夏")]);
+    }
+
+    #[test]
+    fn test_parse_postgrad_semester_folders() {
+        assert_eq!(parse_semester_folders("秋季"), vec![("autumn", "秋季")]);
+        assert_eq!(parse_semester_folders("春季"), vec![("spring", "春季")]);
     }
 
     #[test]
