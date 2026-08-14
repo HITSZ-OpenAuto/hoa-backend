@@ -3,16 +3,24 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize)]
 pub struct TomlPlan {
     pub info: PlanInfo,
+    #[serde(default)]
     pub courses: Vec<TomlCourse>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PlanInfo {
+    #[serde(alias = "entry_year")]
     pub year: String,
     pub major_code: String,
     pub major_name: String,
-    #[serde(rename = "plan_ID")]
+    #[serde(rename = "plan_ID", default)]
     pub plan_id: String,
+    #[serde(default = "default_study_level")]
+    pub study_level: String,
+}
+
+fn default_study_level() -> String {
+    "undergrad".to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,6 +56,7 @@ pub struct Plan {
     pub year: String,
     pub major_code: String,
     pub major_name: String,
+    pub study_level: String,
     pub courses: Vec<Course>,
 }
 
@@ -56,6 +65,7 @@ pub struct SharedCategory {
     pub id: String,
     pub title: String,
     pub repo_ids: Vec<String>,
+    pub study_levels: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -145,6 +155,40 @@ impl Frontmatter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_deserialize_undergrad_and_postgrad_plan_info() {
+        let undergrad: TomlPlan = toml::from_str(
+            r#"
+courses = []
+[info]
+year = "2024"
+major_code = "CS"
+major_name = "计算机科学与技术"
+plan_ID = "PLAN-A"
+"#,
+        )
+        .unwrap();
+        assert_eq!(undergrad.info.year, "2024");
+        assert_eq!(undergrad.info.study_level, "undergrad");
+        assert_eq!(undergrad.info.plan_id, "PLAN-A");
+
+        let postgrad: TomlPlan = toml::from_str(
+            r#"
+[info]
+entry_year = "2025"
+major_code = "0812"
+major_name = "计算机科学与技术"
+study_level = "postgrad"
+courses = []
+"#,
+        )
+        .unwrap();
+        assert_eq!(postgrad.info.year, "2025");
+        assert_eq!(postgrad.info.study_level, "postgrad");
+        assert!(postgrad.info.plan_id.is_empty());
+        assert!(postgrad.courses.is_empty());
+    }
 
     #[test]
     fn test_frontmatter_to_yaml_basic() {

@@ -173,6 +173,22 @@ fn assessment_method_rank(assessment_method: Option<&str>) -> u8 {
     }
 }
 
+fn category_applies_to_plan(category: &SharedCategory, plan: &Plan) -> bool {
+    category.study_levels.is_empty()
+        || category
+            .study_levels
+            .iter()
+            .any(|level| level == &plan.study_level)
+}
+
+fn major_display_name(plan: &Plan) -> String {
+    if plan.study_level == "postgrad" {
+        format!("【研】{}", plan.major_name)
+    } else {
+        plan.major_name.clone()
+    }
+}
+
 fn sort_semester_cards(cards: &mut [SemesterCourseCard]) {
     cards.sort_by(|a, b| {
         course_nature_rank(a.course_nature.as_deref())
@@ -205,7 +221,7 @@ pub async fn generate_course_pages(
         majors_by_year
             .entry(plan.year.clone())
             .or_default()
-            .push((plan.major_code.clone(), plan.major_name.clone()));
+            .push((plan.major_code.clone(), major_display_name(plan)));
 
         let major_dir = docs_dir.join(&plan.year).join(&plan.major_code);
         fs::create_dir_all(&major_dir)?;
@@ -322,6 +338,10 @@ pub async fn generate_course_pages(
         // Shared categories
         let mut category_pages: Vec<String> = Vec::new();
         for cat in shared_categories {
+            if !category_applies_to_plan(cat, plan) {
+                continue;
+            }
+
             let cat_dir = major_dir.join(&cat.id);
             fs::create_dir_all(&cat_dir)?;
 
@@ -403,7 +423,7 @@ pub async fn generate_course_pages(
             .collect();
 
         let major_meta = serde_json::json!({
-            "title": plan.major_name,
+            "title": major_display_name(plan),
             "root": true,
             "defaultOpen": true,
             "pages": pages,
@@ -552,6 +572,120 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_shared_category_study_level_filter() {
+        let plan = Plan {
+            year: "2025".to_string(),
+            major_code: "0812".to_string(),
+            major_name: "计算机科学与技术".to_string(),
+            study_level: "postgrad".to_string(),
+            courses: Vec::new(),
+        };
+        let postgrad = SharedCategory {
+            id: "postgrad-electives".to_string(),
+            title: "研究生专业选修".to_string(),
+            repo_ids: vec!["PostgradElectives".to_string()],
+            study_levels: vec!["postgrad".to_string()],
+        };
+        let undergrad = SharedCategory {
+            id: "cross-specialty".to_string(),
+            title: "跨专业选修".to_string(),
+            repo_ids: vec!["CrossSpecialty".to_string()],
+            study_levels: vec!["undergrad".to_string()],
+        };
+        let universal = SharedCategory {
+            id: "universal".to_string(),
+            title: "通用分类".to_string(),
+            repo_ids: Vec::new(),
+            study_levels: Vec::new(),
+        };
+
+        assert!(category_applies_to_plan(&postgrad, &plan));
+        assert!(!category_applies_to_plan(&undergrad, &plan));
+        assert!(category_applies_to_plan(&universal, &plan));
+    }
+
+    #[test]
+    fn test_postgrad_major_display_name() {
+        let postgrad = Plan {
+            year: "2025".to_string(),
+            major_code: "0812".to_string(),
+            major_name: "计算机科学与技术".to_string(),
+            study_level: "postgrad".to_string(),
+            courses: Vec::new(),
+        };
+        let undergrad = Plan {
+            study_level: "undergrad".to_string(),
+            ..postgrad.clone()
+        };
+
+        assert_eq!(major_display_name(&postgrad), "【研】计算机科学与技术");
+        assert_eq!(major_display_name(&undergrad), "计算机科学与技术");
+    }
+
+    #[tokio::test]
+    async fn test_generate_postgrad_autumn_and_spring_directories() {
+        use std::collections::{HashMap, HashSet};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let repo_root = std::env::temp_dir().join(format!("hoa-postgrad-generator-test-{unique}"));
+        let repos_dir = repo_root.join("repos");
+        let docs_dir = repo_root.join("docs");
+        fs::create_dir_all(&repos_dir).unwrap();
+        fs::create_dir_all(&docs_dir).unwrap();
+
+        let plans = vec![Plan {
+            year: "2025".to_string(),
+            major_code: "0812".to_string(),
+            major_name: "计算机科学与技术".to_string(),
+            study_level: "postgrad".to_string(),
+            courses: vec![Course {
+                repo_id: "CS5001".to_string(),
+                name: "研究生测试课程".to_string(),
+                credit: Some(2.0),
+                assessment_method: Some("考试".to_string()),
+                course_nature: Some("学位课".to_string()),
+                recommended_semester: Some("秋季,春季".to_string()),
+                hours: None,
+                grade_details: None,
+            }],
+        }];
+
+        generate_course_pages(
+            &plans,
+            &[],
+            &HashSet::new(),
+            &HashMap::new(),
+            &repos_dir,
+            &docs_dir,
+            &HashSet::new(),
+        )
+        .await
+        .unwrap();
+
+        let major_dir = docs_dir.join("2025").join("0812");
+        assert!(major_dir.join("autumn").join("CS5001.mdx").exists());
+        assert!(major_dir.join("spring").join("CS5001.mdx").exists());
+
+        let meta = fs::read_to_string(major_dir.join("meta.json")).unwrap();
+        assert!(meta.contains("【研】计算机科学与技术"));
+        assert!(meta.contains("\"autumn\""));
+        assert!(meta.contains("\"spring\""));
+
+        let autumn_index =
+            fs::read_to_string(major_dir.join("autumn").join("index.mdx")).unwrap();
+        let spring_index =
+            fs::read_to_string(major_dir.join("spring").join("index.mdx")).unwrap();
+        assert!(autumn_index.contains("研究生测试课程"));
+        assert!(spring_index.contains("研究生测试课程"));
+
+        let _ = fs::remove_dir_all(repo_root);
+    }
+
     #[tokio::test]
     async fn test_generate_placeholder_for_plan_course_not_in_repos_list() {
         use std::collections::{HashMap, HashSet};
@@ -578,6 +712,7 @@ mod tests {
             year: "2024".to_string(),
             major_code: "CS".to_string(),
             major_name: "Computer Science".to_string(),
+            study_level: "undergrad".to_string(),
             courses: vec![Course {
                 repo_id: "MISSING101".to_string(),
                 name: "Missing Course".to_string(),
