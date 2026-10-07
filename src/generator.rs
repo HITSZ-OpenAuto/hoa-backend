@@ -181,14 +181,6 @@ fn category_applies_to_plan(category: &SharedCategory, plan: &Plan) -> bool {
             .any(|level| level == &plan.study_level)
 }
 
-fn major_display_name(plan: &Plan) -> String {
-    if plan.study_level == "postgrad" {
-        format!("【研】{}", plan.major_name)
-    } else {
-        plan.major_name.clone()
-    }
-}
-
 fn sort_semester_cards(cards: &mut [SemesterCourseCard]) {
     cards.sort_by(|a, b| {
         course_nature_rank(a.course_nature.as_deref())
@@ -221,7 +213,7 @@ pub async fn generate_course_pages(
         majors_by_year
             .entry(plan.year.clone())
             .or_default()
-            .push((plan.major_code.clone(), major_display_name(plan)));
+            .push((plan.major_code.clone(), plan.major_name.clone()));
 
         let major_dir = docs_dir.join(&plan.year).join(&plan.major_code);
         fs::create_dir_all(&major_dir)?;
@@ -423,7 +415,7 @@ pub async fn generate_course_pages(
             .collect();
 
         let major_meta = serde_json::json!({
-            "title": major_display_name(plan),
+            "title": plan.major_name,
             "root": true,
             "defaultOpen": true,
             "pages": pages,
@@ -605,24 +597,6 @@ mod tests {
         assert!(category_applies_to_plan(&universal, &plan));
     }
 
-    #[test]
-    fn test_postgrad_major_display_name() {
-        let postgrad = Plan {
-            year: "2025".to_string(),
-            major_code: "0812".to_string(),
-            major_name: "计算机科学与技术".to_string(),
-            study_level: "postgrad".to_string(),
-            courses: Vec::new(),
-        };
-        let undergrad = Plan {
-            study_level: "undergrad".to_string(),
-            ..postgrad.clone()
-        };
-
-        assert_eq!(major_display_name(&postgrad), "【研】计算机科学与技术");
-        assert_eq!(major_display_name(&undergrad), "计算机科学与技术");
-    }
-
     #[tokio::test]
     async fn test_generate_postgrad_autumn_and_spring_directories() {
         use std::collections::{HashMap, HashSet};
@@ -672,14 +646,17 @@ mod tests {
         assert!(major_dir.join("spring").join("CS5001.mdx").exists());
 
         let meta = fs::read_to_string(major_dir.join("meta.json")).unwrap();
-        assert!(meta.contains("【研】计算机科学与技术"));
+        let major_meta: serde_json::Value = serde_json::from_str(&meta).unwrap();
+        assert_eq!(major_meta["title"], "计算机科学与技术");
         assert!(meta.contains("\"autumn\""));
         assert!(meta.contains("\"spring\""));
 
-        let autumn_index =
-            fs::read_to_string(major_dir.join("autumn").join("index.mdx")).unwrap();
-        let spring_index =
-            fs::read_to_string(major_dir.join("spring").join("index.mdx")).unwrap();
+        let year_index = fs::read_to_string(docs_dir.join("2025").join("index.mdx")).unwrap();
+        assert!(year_index.contains("title=\"计算机科学与技术\""));
+        assert!(year_index.contains("href=\"/docs/2025/0812\""));
+
+        let autumn_index = fs::read_to_string(major_dir.join("autumn").join("index.mdx")).unwrap();
+        let spring_index = fs::read_to_string(major_dir.join("spring").join("index.mdx")).unwrap();
         assert!(autumn_index.contains("研究生测试课程"));
         assert!(spring_index.contains("研究生测试课程"));
 
